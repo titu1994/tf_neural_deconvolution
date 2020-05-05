@@ -11,12 +11,12 @@ class SimpleNet(tf.keras.Model):
         self.num_classes = num_channels
 
         self.conv1 = FastDeconv2D(3, num_channels, kernel_size=(3, 3), stride=(2, 2),
-                                  padding='same', activation='relu',
-                                  n_iter=5, momentum=0.1, block=64)
+                                  padding='same', activation='relu', groups=1,
+                                  n_iter=5, momentum=0.9, block=64)
 
         self.conv2 = FastDeconv2D(num_channels, num_channels, kernel_size=(3, 3), stride=(2, 2),
-                                  padding='same', activation='relu',
-                                  n_iter=5, momentum=0.1, block=64)
+                                  padding='same', activation='relu', groups=32,
+                                  n_iter=5, momentum=0.9, block=64)
 
         self.final_conv = ChannelDeconv2D(block=64, momentum=0.1)
 

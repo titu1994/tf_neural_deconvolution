@@ -2,6 +2,8 @@ import math
 import tensorflow as tf
 
 from tensorflow.python.keras.layers.convolutional import Conv
+from tensorflow.python.keras.utils import conv_utils
+from tensorflow.python.ops import nn_ops
 
 
 # iteratively solve for inverse sqrt of a matrix
@@ -180,14 +182,25 @@ class ChannelDeconv2D(tf.keras.layers.Layer):
 class FastDeconv2D(Conv):
 
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding='valid', dilation_rate=1,
-                 activation=None, use_bias=True, eps=1e-5, n_iter=5, momentum=0.1, block=64, sampling_stride=3,
-                 freeze=False, freeze_iter=100):
+                 activation=None, use_bias=True, groups=1, eps=1e-5, n_iter=5, momentum=0.1, block=64,
+                 sampling_stride=3, freeze=False, freeze_iter=100):
         self.in_channels = in_channels
+        self.groups = groups
         self.momentum = momentum
         self.n_iter = n_iter
         self.eps = eps
         self.counter = 0
         self.track_running_stats = True
+
+        if in_channels % self.groups != 0:
+            raise ValueError(
+                'The number of input channels must be evenly divisible by the number '
+                'of groups. Received groups={}, but the input has {} channels '.format(self.groups,
+                                                                                       in_channels))
+        if out_channels is not None and out_channels % self.groups != 0:
+            raise ValueError(
+                'The number of filters must be evenly divisible by the number of '
+                'groups. Received: groups={}, filters={}'.format(groups, out_channels))
 
         super(FastDeconv2D, self).__init__(
             2, out_channels, kernel_size, stride, padding, dilation_rate=dilation_rate,
@@ -200,12 +213,25 @@ class FastDeconv2D(Conv):
                 block = math.gcd(block, in_channels)
                 print("`in_channels` not divisible by `block`, computing new `block` value as %d" % (block))
 
+        if groups > 1:
+            block = in_channels // groups
+
         self.block = block
 
         kernel_size_int = kernel_size[0] if type(kernel_size) in (list, tuple) else kernel_size
         self.num_features = kernel_size_int ** 2 * block
-        self.running_mean = tf.Variable(tf.zeros(self.num_features), trainable=False, dtype=self.dtype)
-        self.running_deconv = tf.Variable(tf.eye(self.num_features), trainable=False, dtype=self.dtype)
+
+        if self.groups == 1:
+            self.running_mean = tf.Variable(tf.zeros(self.num_features), trainable=False, dtype=self.dtype)
+            self.running_deconv = tf.Variable(tf.eye(self.num_features), trainable=False, dtype=self.dtype)
+        else:
+            self.running_mean = tf.Variable(tf.zeros(kernel_size_int ** 2 * in_channels),
+                                            trainable=False, dtype=self.dtype)
+
+            deconv_buff = tf.eye(self.num_features)
+            deconv_buff = tf.expand_dims(deconv_buff, axis=0)
+            deconv_buff = tf.tile(deconv_buff, [in_channels // block, 1, 1])
+            self.running_deconv = tf.Variable(deconv_buff, trainable=False, dtype=self.dtype)
 
         stride_int = stride[0] if type(stride) in (list, tuple) else stride
         self.sampling_stride = sampling_stride * stride_int
@@ -213,7 +239,42 @@ class FastDeconv2D(Conv):
         self.freeze_iter = freeze_iter
         self.freeze = freeze
 
-    @tf.function
+    def build(self, input_shape):
+        input_shape = tf.TensorShape(input_shape)
+        input_channel = self._get_input_channel(input_shape)
+        kernel_shape = self.kernel_size + (input_channel // self.groups, self.filters)
+
+        self.kernel = self.add_weight(
+            name='kernel',
+            shape=kernel_shape,
+            initializer=self.kernel_initializer,
+            regularizer=self.kernel_regularizer,
+            constraint=self.kernel_constraint,
+            trainable=True,
+            dtype=self.dtype)
+        if self.use_bias:
+            self.bias = self.add_weight(
+                name='bias',
+                shape=(self.filters,),
+                initializer=self.bias_initializer,
+                regularizer=self.bias_regularizer,
+                constraint=self.bias_constraint,
+                trainable=True,
+                dtype=self.dtype)
+        else:
+            self.bias = None
+        channel_axis = self._get_channel_axis()
+        self.input_spec = tf.keras.layers.InputSpec(ndim=self.rank + 2,
+                                                    axes={channel_axis: input_channel})
+
+        self._build_conv_op_input_shape = input_shape
+        self._build_input_channel = input_channel
+        self._padding_op = self._get_padding_op()
+        self._conv_op_data_format = conv_utils.convert_data_format(
+            self.data_format, self.rank + 2)
+        self.built = True
+
+    @tf.function(experimental_compile=True)
     def call(self, x, training=None):
         x_shape = tf.shape(x)
         N, H, W, C = x_shape[0], x_shape[1], x_shape[2], x_shape[3]
@@ -230,32 +291,49 @@ class FastDeconv2D(Conv):
 
             # 1. im2col: N x cols x pixels -> N*pixles x cols
             if self.kernel_size[0] > 1:
-                # [N, X, Y, C]
+                # [N, L, L, C * K^2]
                 X = tf.image.extract_patches(x,
                                              sizes=[1] + list(self.kernel_size) + [1],
                                              strides=[1, self.sampling_stride, self.sampling_stride, 1],
                                              rates=[1, self.dilation_rate[0], self.dilation_rate[1], 1],
                                              padding=str(self.padding).upper())
 
-                X = tf.reshape(X, [N, -1, C])
+                X = tf.reshape(X, [N, -1, C * self.kernel_size[0] * self.kernel_size[1]])  # [N, L^2, C * K^2]
+
             else:
                 # channel wise
                 X = tf.reshape(x, [-1, C])[::self.sampling_stride ** 2, :]
 
-            X = tf.reshape(X, [-1, self.num_features, C // block])
-            X = tf.transpose(X, [0, 2, 1])
-            X = tf.reshape(X, [-1, self.num_features])
+            if self.groups == 1:
+                # (C//B*N*pixels,k*k*B)
+                X = tf.reshape(X, [-1, self.num_features, C // block])
+                X = tf.transpose(X, [0, 2, 1])
+                X = tf.reshape(X, [-1, self.num_features])
+            else:
+                X_shape_ = tf.shape(X)
+                X = tf.reshape(X, [-1, X_shape_[-1]])  # [N, L^2, C * K^2] -> [N * L^2, C * K^2]
 
             # 2. subtract mean
             X_mean = tf.reduce_mean(X, axis=0)
             X = X - tf.expand_dims(X_mean, axis=0)
 
             # 3. calculate COV, COV^(-0.5), then deconv
-            scale = tf.cast(tf.shape(X)[0], X.dtype)
-            Id = tf.eye(X.shape[1], dtype=X.dtype)
-            # addmm op
-            Cov = self.eps * Id + (1. / scale) * tf.matmul(tf.transpose(X), X)
-            deconv = isqrt_newton_schulz_autograd(Cov, self.n_iter)
+            if self.groups == 1:
+                scale = tf.cast(tf.shape(X)[0], X.dtype)
+                Id = tf.eye(X.shape[1], dtype=X.dtype)
+                # addmm op
+                Cov = self.eps * Id + (1. / scale) * tf.matmul(tf.transpose(X), X)
+                deconv = isqrt_newton_schulz_autograd(Cov, self.n_iter)
+            else:
+                X = tf.reshape(X, [-1, self.groups, self.num_features])
+                X = tf.transpose(X, [1, 0, 2])  # [groups, -1, num_features]
+
+                Id = tf.eye(self.num_features, dtype=X.dtype)
+                Id = tf.broadcast_to(Id, [self.groups, self.num_features, self.num_features])
+
+                scale = tf.cast(tf.shape(X)[1], X.dtype)
+                Cov = self.eps * Id + (1. / scale) * tf.matmul(tf.transpose(X, [0, 2, 1]), X)
+                deconv = isqrt_newton_schulz_autograd_batch(Cov, self.n_iter)
 
             if self.track_running_stats:
                 running_mean = self.momentum * X_mean + (1. - self.momentum) * self.running_mean
@@ -270,22 +348,39 @@ class FastDeconv2D(Conv):
             deconv = self.running_deconv
 
         # 4. X * deconv * conv = X * (deconv * conv)
-        w = tf.reshape(self.kernel, [C // block, self.num_features, -1])
-        w = tf.transpose(w, [0, 2, 1])
-        w = tf.reshape(w, [-1, self.num_features])
-        w = tf.matmul(w, deconv)
+        if self.groups == 1:
+            w = tf.reshape(self.kernel, [C // block, self.num_features, -1])
+            w = tf.transpose(w, [0, 2, 1])
+            w = tf.reshape(w, [-1, self.num_features])
+            w = tf.matmul(w, deconv)
 
-        b_dash = tf.matmul(w, (tf.expand_dims(X_mean, axis=-1)))
-        b_dash = tf.reshape(b_dash, [self.filters, -1])
-        b_dash = tf.reduce_sum(b_dash, axis=1)
-        b = self.bias - b_dash
+            if self.use_bias:
+                b_dash = tf.matmul(w, (tf.expand_dims(X_mean, axis=-1)))
+                b_dash = tf.reshape(b_dash, [self.filters, -1])
+                b_dash = tf.reduce_sum(b_dash, axis=1)
+                b = self.bias - b_dash
+            else:
+                b = 0.
 
-        w = tf.reshape(w, [C // block, -1, self.num_features])
-        w = tf.transpose(w, [0, 2, 1])
+            w = tf.reshape(w, [C // block, -1, self.num_features])
+            w = tf.transpose(w, [0, 2, 1])
+
+        else:
+            w = tf.reshape(self.kernel, [C // block, -1, self.num_features])
+            w = tf.matmul(w, deconv)
+
+            if self.use_bias:
+                b_dash = tf.matmul(w, tf.reshape(X_mean, [-1, self.num_features, 1]))
+                b_dash = tf.reshape(b_dash, self.bias.shape)
+                b = self.bias - b_dash
+            else:
+                b = 0.
+
         w = tf.reshape(w, self.kernel.shape)
 
         x = tf.nn.conv2d(x, w, self.strides, str(self.padding).upper(), dilations=self.dilation_rate)
-        x = tf.nn.bias_add(x, b, data_format="NHWC")
+        if self.use_bias:
+            x = tf.nn.bias_add(x, b, data_format="NHWC")
 
         if self.activation is not None:
             return self.activation(x)
