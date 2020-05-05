@@ -25,7 +25,7 @@ class SimpleNet(tf.keras.Model):
                                   n_iter=5, momentum=0.1, block=64)
 
         self.conv2 = FastDeconv2D(num_channels, num_channels, kernel_size=(3, 3), stride=(2, 2),
-                                  padding='same', activation='relu',
+                                  padding='same', activation='relu', groups=32,  # ADD GROUPS FOR GPU ONLY
                                   n_iter=5, momentum=0.1, block=64)
 
         self.final_conv = ChannelDeconv2D(block=64, momentum=0.1)
