@@ -4,8 +4,11 @@ import datetime as dt
 import tensorflow as tf
 
 from utils.optim import AdamW, SGDW
+from utils.schedule import CosineDecay
+
 from models.simplenet2d import SimpleNet2D
 from models.vgg import VGG
+
 
 (x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar10.load_data()
 
@@ -35,7 +38,6 @@ test_dataset = test_dataset.map(lambda x, y: (tf.cast(x, tf.float32) / 255., y))
 test_dataset = test_dataset.map(lambda x, y: ((x - CIFAR_MEAN) / CIFAR_STD, y))
 test_dataset = test_dataset.batch(100)
 
-
 logdir = './log_cifar10/{}'.format(dt.datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
 if not os.path.exists(logdir):
     os.makedirs(logdir)
@@ -58,7 +60,7 @@ epochs = 1  # should be 1, 20 or 100
 
 # SGDW Optimizer
 total_steps = math.ceil(len(x_train) / float(128)) * max(1, epochs)
-lr = tf.keras.experimental.CosineDecay(0.1, decay_steps=total_steps, alpha=1e-6)
+lr = CosineDecay(0.1, decay_steps=total_steps, alpha=1e-6)
 optimizer = SGDW(lr, momentum=0.9, nesterov=True, weight_decay=0.001)
 
 model.compile(optimizer=optimizer,
@@ -68,4 +70,3 @@ model.compile(optimizer=optimizer,
 model.fit(train_dataset, epochs=epochs,
           validation_data=test_dataset,
           callbacks=callbacks)
-

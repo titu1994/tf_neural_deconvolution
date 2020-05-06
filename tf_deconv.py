@@ -196,7 +196,7 @@ class FastDeconv2D(Conv):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding='valid', dilation_rate=1,
                  activation=None, use_bias=True, groups=1, eps=1e-5, n_iter=5, momentum=0.1, block=64,
                  sampling_stride=3, freeze=False, freeze_iter=100, kernel_initializer='he_uniform',
-                 bias_initializer=BiasHeUniform):
+                 bias_initializer=BiasHeUniform()):
         self.in_channels = in_channels
         self.groups = groups
         self.momentum = momentum
@@ -214,9 +214,6 @@ class FastDeconv2D(Conv):
             raise ValueError(
                 'The number of filters must be evenly divisible by the number of '
                 'groups. Received: groups={}, filters={}'.format(groups, out_channels))
-
-        if isinstance(bias_initializer, BiasHeUniform):
-            bias_initializer = bias_initializer()
 
         super(FastDeconv2D, self).__init__(
             2, out_channels, kernel_size, stride, padding, dilation_rate=dilation_rate,

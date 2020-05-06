@@ -53,15 +53,14 @@ class VGG(tf.keras.Model):
 
 
 if __name__ == '__main__':
-    if __name__ == '__main__':
-        x = tf.zeros([16, 32, 32, 3])
-        model = VGG(vgg_name='VGG16', num_classes=10)
+    x = tf.zeros([16, 32, 32, 3])
+    model = VGG(vgg_name='VGG16', num_classes=10)
 
-        # trace the model
-        model_traced = tf.function(model)
+    # trace the model
+    model_traced = tf.function(model)
 
-        out = model_traced(x, training=True)
-        print(out.shape)
+    out = model_traced(x, training=True)
+    print(out.shape)
 
-        # 14.71 M trainable params, 18.97 total params; matches paper
-        model.summary()
+    # 14.71 M trainable params, 18.97 total params; matches paper
+    model.summary()
