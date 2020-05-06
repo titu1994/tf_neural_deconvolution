@@ -47,9 +47,9 @@ def isqrt_newton_schulz_autograd_batch(A: tf.Tensor, numIters: int):
         Z = tf.broadcast_to(Z, Ashape)
 
     for i in range(numIters):
-        T = 0.5 * (3.0 * I - tf.matmul(Z, Y))  # Z.bmm(Y)
-        Y = tf.matmul(Y, T)  # Y.bmm(T)
-        Z = tf.matmul(T, Z)  # T.bmm(Z)
+        T = 0.5 * (3.0 * I - tf.matmul(Z, Y))
+        Y = tf.matmul(Y, T)
+        Z = tf.matmul(T, Z)
 
     A_isqrt = Z / tf.sqrt(normA)
 
