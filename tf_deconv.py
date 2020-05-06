@@ -81,6 +81,13 @@ class ChannelDeconv2D(tf.keras.layers.Layer):
         if int(in_channels / self.block) * self.block == 0:
             raise ValueError("`block` must be smaller than in_channels.")
 
+        # change rank based on 3d or 4d tensor input
+        channel_axis = -1
+        self.input_spec = tf.keras.layers.InputSpec(ndim=len(input_shape),
+                                                    axes={channel_axis: in_channels})
+
+        self.built = True
+
     @tf.function
     def call(self, x, training=None):
         x_shape = tf.shape(x)
@@ -228,14 +235,15 @@ class FastDeconv2D(Conv):
 
         self.block = block
 
-        kernel_size_int = kernel_size[0] if type(kernel_size) in (list, tuple) else kernel_size
-        self.num_features = kernel_size_int ** 2 * block
+        kernel_size_int_0 = kernel_size[0] if type(kernel_size) in (list, tuple) else kernel_size
+        kernel_size_int_1 = kernel_size[1] if type(kernel_size) in (list, tuple) else kernel_size
+        self.num_features = kernel_size_int_0 * kernel_size_int_1 * block
 
         if self.groups == 1:
             self.running_mean = tf.Variable(tf.zeros(self.num_features), trainable=False, dtype=self.dtype)
             self.running_deconv = tf.Variable(tf.eye(self.num_features), trainable=False, dtype=self.dtype)
         else:
-            self.running_mean = tf.Variable(tf.zeros(kernel_size_int ** 2 * in_channels),
+            self.running_mean = tf.Variable(tf.zeros(kernel_size_int_0 * kernel_size_int_1 * in_channels),
                                             trainable=False, dtype=self.dtype)
 
             deconv_buff = tf.eye(self.num_features)
@@ -274,7 +282,9 @@ class FastDeconv2D(Conv):
         else:
             self.bias = None
         channel_axis = self._get_channel_axis()
-        self.input_spec = tf.keras.layers.InputSpec(ndim=self.rank + 2,
+
+        # change rank based on 3d or 4d tensor input
+        self.input_spec = tf.keras.layers.InputSpec(ndim=len(input_shape),
                                                     axes={channel_axis: input_channel})
 
         self._build_conv_op_input_shape = input_shape
@@ -397,3 +407,56 @@ class FastDeconv2D(Conv):
             return self.activation(x)
         else:
             return x
+
+
+""" 1D Compat layers """
+
+
+class ChannelDeconv1D(ChannelDeconv2D):
+
+    def __init__(self, block, eps=1e-5, n_iter=5, momentum=0.1, sampling_stride=3):
+        super(ChannelDeconv1D, self).__init__(block=block, eps=eps, n_iter=n_iter,
+                                              momentum=momentum, sampling_stride=sampling_stride)
+
+        self.input_spec = tf.keras.layers.InputSpec(ndim=3)
+
+    @tf.function
+    def call(self, x, training=None):
+        # insert dummy dimension in time channel
+        x_expanded = tf.expand_dims(x, axis=2)  # [N, T, 1, C]
+
+        out = super(ChannelDeconv1D, self).call(x_expanded, training=training)
+
+        # remove dummy dimension
+        x = tf.squeeze(out, axis=2)  # [N, T / stride, C']
+        return x
+
+
+class FastDeconv1D(FastDeconv2D):
+
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding='valid', dilation_rate=1,
+                 activation=None, use_bias=True, groups=1, eps=1e-5, n_iter=5, momentum=0.1, block=64,
+                 sampling_stride=3, freeze=False, freeze_iter=100, kernel_initializer='he_uniform',
+                 bias_initializer=BiasHeUniform):
+        kernel_size = (kernel_size, 1)
+        stride = (stride, 1)
+        super(FastDeconv1D, self).__init__(in_channels=in_channels, out_channels=out_channels,
+                                           kernel_size=kernel_size, stride=stride, padding=padding,
+                                           dilation_rate=dilation_rate, activation=activation,
+                                           use_bias=use_bias, groups=groups, eps=eps,
+                                           n_iter=n_iter, momentum=momentum, block=block,
+                                           sampling_stride=sampling_stride, freeze=freeze, freeze_iter=freeze_iter,
+                                           kernel_initializer=kernel_initializer, bias_initializer=bias_initializer)
+
+        self.input_spec = tf.keras.layers.InputSpec(ndim=3)
+
+    @tf.function(experimental_compile=True)
+    def call(self, x, training=None):
+        # insert dummy dimension in time channel
+        x_expanded = tf.expand_dims(x, axis=2)  # [N, T, 1, C]
+
+        out = super(FastDeconv1D, self).call(x_expanded, training=training)
+
+        # remove dummy dimension
+        x = tf.squeeze(out, axis=2)  # [N, T / stride, C']
+        return x
