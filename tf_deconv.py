@@ -82,11 +82,9 @@ class ChannelDeconv2D(tf.keras.layers.Layer):
             raise ValueError("`block` must be smaller than in_channels.")
 
         # change rank based on 3d or 4d tensor input
-        ndim = len(input_shape)
-        assert ndim in [3, 4], "Can only take rank 3 and 4 tensors as input"
-
         channel_axis = -1
-        self.input_spec = tf.keras.layers.InputSpec(ndim=ndim,
+        self.input_spec = tf.keras.layers.InputSpec(min_ndim=2,
+                                                    max_ndim=4,
                                                     axes={channel_axis: in_channels})
 
         self.built = True

@@ -54,7 +54,7 @@ callbacks = [
 # model = SimpleNet(num_classes=10, num_channels=64)
 model = VGG(vgg_name='VGG16', num_classes=10)
 
-epochs = 100  # should be 1, 20 or 100
+epochs = 1  # should be 1, 20 or 100
 
 # SGDW Optimizer
 total_steps = math.ceil(len(x_train) / float(128)) * max(1, epochs)
