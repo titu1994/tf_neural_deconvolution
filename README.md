@@ -4,43 +4,73 @@ Tensorflow implementation of the `FastDeconv2D` and `ChannelDeconv` layers from 
 
 # Usage
 
-Simply download the `tf_deconv.py` script and import `ChannelDeconv2D` and `FastDeconv2D` layers. Support for most parameters other than `groups` is available.
+Simply download the `tf_deconv.py` script and import `ChannelDeconv2D` and `FastDeconv2D` layers.
 
-A simple baseline model has been provided in `models/simplenet.py` to try out the architecture. `FastDeconv2D` can replace most Conv2D layer operations.
+A baseline model has been provided in `models/vgg.py` to try out the architecture. `FastDeconv2D` can replace most Conv2D layer operations.
+
+## Important Note
+-----------------
+
+It is crucial to initialize your models properly to obtain correct performance. 
+
+1) All `FastDeconv2D` kernels are initialized by default using `he_uniform`, and their bias by `BiasHeUniform`. 
+
+2) Final `Dense` layer `kernel_initializer` should be `he_uniform` and `bias_initializer` should be `BiasHeUniform`.
+
+--------
 
 ```python
 import tensorflow as tf
-from tf_deconv import FastDeconv2D, ChannelDeconv2D
+from tf_deconv import FastDeconv2D, ChannelDeconv2D, BiasHeUniform
 
-class SimpleNet(tf.keras.Model):
+kernel_size = 3
 
-    def __init__(self, num_classes, num_channels=64):
-        super().__init__()
+cfg = {
+    'VGG11': [64, 'M', 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
+    'VGG13': [64, 64, 'M', 128, 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
+    'VGG16': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'M', 512, 512, 512, 'M', 512, 512, 512, 'M'],
+    'VGG19': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 256, 'M', 512, 512, 512, 512, 'M', 512, 512, 512, 512, 'M'],
+}
 
-        self.num_channels = num_channels
-        self.num_classes = num_channels
 
-        self.conv1 = FastDeconv2D(3, num_channels, kernel_size=(3, 3), stride=(2, 2),
-                                  padding='same', activation='relu',
-                                  n_iter=5, momentum=0.1, block=64)
+class VGG(tf.keras.Model):
+    def __init__(self, vgg_name, num_classes=10):
+        super(VGG, self).__init__()
+        assert vgg_name in cfg.keys(), "Choose VGG model from {}".format(cfg.keys())
 
-        self.conv2 = FastDeconv2D(num_channels, num_channels, kernel_size=(3, 3), stride=(2, 2),
-                                  padding='same', activation='relu', groups=32,  # ADD GROUPS FOR GPU ONLY
-                                  n_iter=5, momentum=0.1, block=64)
+        self.features = self._make_layers(cfg[vgg_name])
+        self.channel_deconv = ChannelDeconv2D(block=512)
+        self.classifier = tf.keras.layers.Dense(num_classes, activation='softmax',
+                                                kernel_initializer='he_uniform',
+                                                bias_initializer=BiasHeUniform(),
+                                                )
 
-        self.final_conv = ChannelDeconv2D(block=64, momentum=0.1)
+    def call(self, x, training=None, mask=None):
+        out = self.features(x, training=training)
+        out = self.channel_deconv(out, training=training)
+        out = self.classifier(out)
+        return out
 
-        self.gap = tf.keras.layers.GlobalAveragePooling2D()
-        self.clf = tf.keras.layers.Dense(num_classes, activation='softmax')
+    def _make_layers(self, cfg):
+        layers = []
+        in_channels = 3
 
-    def call(self, inputs, training=None, mask=None):
-        x = self.conv1(inputs, training=training)
-        x = self.conv2(x, training=training)
-        x = self.final_conv(x, training=training)
-        x = self.gap(x)
-        x = self.clf(x)
+        for x in cfg:
+            if x == 'M':
+                layers.append(tf.keras.layers.MaxPool2D())
+            else:
+                if in_channels == 3:
+                    deconv = FastDeconv2D(in_channels, x, kernel_size=(kernel_size, kernel_size), padding='same',
+                                          freeze=True, n_iter=15, block=64, activation='relu')
+                else:
+                    deconv = FastDeconv2D(in_channels, x, kernel_size=(kernel_size, kernel_size), padding='same',
+                                          block=64, activation='relu')
 
-        return x
+                layers.append(deconv)
+                in_channels = x
+
+        layers.append(tf.keras.layers.GlobalAveragePooling2D())
+        return tf.keras.Sequential(layers)
 ```
 
 # Dependencies

@@ -27,8 +27,8 @@ train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train)).shuffle(1
 train_dataset = train_dataset.map(lambda x, y: (tf.cast(x, tf.float32) / 255., y))
 train_dataset = train_dataset.map(augment, num_parallel_calls=os.cpu_count())
 train_dataset = train_dataset.map(lambda x, y: ((x - CIFAR_MEAN) / CIFAR_STD, y))
-train_dataset = train_dataset.prefetch(1)
 train_dataset = train_dataset.batch(128)
+train_dataset = train_dataset.prefetch(4)
 
 test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test))
 test_dataset = test_dataset.map(lambda x, y: (tf.cast(x, tf.float32) / 255., y))
@@ -54,12 +54,12 @@ callbacks = [
 # model = SimpleNet(num_classes=10, num_channels=64)
 model = VGG(vgg_name='VGG16', num_classes=10)
 
-epochs = 100
+epochs = 1  # should be 1, 20 or 100
 
 # SGDW Optimizer
-total_steps = math.ceil(len(x_train) / float(128)) * max(100, epochs)
-lr = tf.keras.experimental.CosineDecay(0.1, decay_steps=total_steps, alpha=1e-5)
-optimizer = SGDW(lr, momentum=0.9, nesterov=True, weight_decay=0.0001)
+total_steps = math.ceil(len(x_train) / float(128)) * max(1, epochs)
+lr = tf.keras.experimental.CosineDecay(0.1, decay_steps=total_steps, alpha=1e-6)
+optimizer = SGDW(lr, momentum=0.9, nesterov=True, weight_decay=0.001)  # 1e-3 for 1 epoch
 
 model.compile(optimizer=optimizer,
               loss='sparse_categorical_crossentropy',
