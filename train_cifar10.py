@@ -4,7 +4,7 @@ import datetime as dt
 import tensorflow as tf
 
 from utils.optim import AdamW, SGDW
-from models.simplenet import SimpleNet
+from models.simplenet2d import SimpleNet2D
 from models.vgg import VGG
 
 (x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar10.load_data()
@@ -54,12 +54,12 @@ callbacks = [
 # model = SimpleNet(num_classes=10, num_channels=64)
 model = VGG(vgg_name='VGG16', num_classes=10)
 
-epochs = 1  # should be 1, 20 or 100
+epochs = 100  # should be 1, 20 or 100
 
 # SGDW Optimizer
 total_steps = math.ceil(len(x_train) / float(128)) * max(1, epochs)
 lr = tf.keras.experimental.CosineDecay(0.1, decay_steps=total_steps, alpha=1e-6)
-optimizer = SGDW(lr, momentum=0.9, nesterov=True, weight_decay=0.001)  # 1e-3 for 1 epoch
+optimizer = SGDW(lr, momentum=0.9, nesterov=True, weight_decay=0.001)
 
 model.compile(optimizer=optimizer,
               loss='sparse_categorical_crossentropy',
