@@ -429,12 +429,21 @@ class ChannelDeconv1D(ChannelDeconv2D):
     @tf.function
     def call(self, x, training=None):
         # insert dummy dimension in time channel
-        x_expanded = tf.expand_dims(x, axis=2)  # [N, T, 1, C]
+        shape = x.shape
+
+        if len(shape) == 3:
+            x_expanded = tf.expand_dims(x, axis=2)  # [N, T, 1, C]
+        else:
+            x_expanded = x
 
         out = super(ChannelDeconv1D, self).call(x_expanded, training=training)
 
-        # remove dummy dimension
-        x = tf.squeeze(out, axis=2)  # [N, T / stride, C']
+        if len(shape) == 3:
+            # remove dummy dimension
+            x = tf.squeeze(out, axis=2)  # [N, T / stride, C']
+        else:
+            x = out
+
         return x
 
 
