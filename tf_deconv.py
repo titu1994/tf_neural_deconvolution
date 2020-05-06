@@ -3,7 +3,11 @@ import tensorflow as tf
 
 from tensorflow.python.keras.layers.convolutional import Conv
 from tensorflow.python.keras.utils import conv_utils
-from tensorflow.python.ops import nn_ops
+
+
+class BiasHeUniform(tf.keras.initializers.VarianceScaling):
+    def __init__(self, seed=None):
+        super(BiasHeUniform, self).__init__(scale=1. / 3., mode='fan_in', distribution='uniform', seed=seed)
 
 
 # iteratively solve for inverse sqrt of a matrix
@@ -53,7 +57,7 @@ def isqrt_newton_schulz_autograd_batch(A: tf.Tensor, numIters: int):
 
 
 class ChannelDeconv2D(tf.keras.layers.Layer):
-    def __init__(self, block, eps=1e-2, n_iter=5, momentum=0.1, sampling_stride=3):
+    def __init__(self, block, eps=1e-5, n_iter=5, momentum=0.1, sampling_stride=3):
         super(ChannelDeconv2D, self).__init__()
 
         self.eps = eps
@@ -94,7 +98,7 @@ class ChannelDeconv2D(tf.keras.layers.Layer):
         c = tf.cast(C / block, tf.int32) * block
 
         # step 1. remove mean
-        if tf.not_equal(c, C):
+        if c != C:
             x1 = tf.reshape(tf.transpose(x[:, :, :, :c], [3, 0, 1, 2]), [block, -1])
         else:
             x1 = tf.reshape(tf.transpose(x, [3, 0, 1, 2]), [block, -1])
@@ -142,7 +146,7 @@ class ChannelDeconv2D(tf.keras.layers.Layer):
 
         # normalize the remaining channels
         if c != C:
-            x_tmp = tf.reshape(x[:, c:], [N, -1])
+            x_tmp = tf.reshape(x[:, :, :, c:], [N, -1])
 
             if self.sampling_stride > 1 and H >= self.sampling_stride and W >= self.sampling_stride:
                 x_s = x_tmp[:, ::self.sampling_stride ** 2]
@@ -164,17 +168,17 @@ class ChannelDeconv2D(tf.keras.layers.Layer):
                 mean2 = self.running_mean2
                 var = self.running_var
 
-            x_tmp = tf.sqrt((x[:, c:] - mean2) / (var + self.eps))
-            x1 = tf.concat([x1, x_tmp], axis=1)
+            x_tmp = tf.sqrt((x[:, :, :, c:] - mean2) / (var + self.eps))
+            x1 = tf.concat([x1, x_tmp], axis=-1)
 
         if training:
             self.num_batches_tracked.assign_add(1)
 
         if len(x_original_shape) == 2:
             x1 = tf.reshape(x1, x_original_shape)
-
-        x_intshape = x.shape
-        x1 = tf.ensure_shape(x1, x_intshape)
+        else:
+            x_intshape = x.shape
+            x1 = tf.ensure_shape(x1, x_intshape)
 
         return x1
 
@@ -183,7 +187,8 @@ class FastDeconv2D(Conv):
 
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding='valid', dilation_rate=1,
                  activation=None, use_bias=True, groups=1, eps=1e-5, n_iter=5, momentum=0.1, block=64,
-                 sampling_stride=3, freeze=False, freeze_iter=100):
+                 sampling_stride=3, freeze=False, freeze_iter=100, kernel_initializer='he_uniform',
+                 bias_initializer=BiasHeUniform):
         self.in_channels = in_channels
         self.groups = groups
         self.momentum = momentum
@@ -202,9 +207,14 @@ class FastDeconv2D(Conv):
                 'The number of filters must be evenly divisible by the number of '
                 'groups. Received: groups={}, filters={}'.format(groups, out_channels))
 
+        if isinstance(bias_initializer, BiasHeUniform):
+            bias_initializer = bias_initializer()
+
         super(FastDeconv2D, self).__init__(
             2, out_channels, kernel_size, stride, padding, dilation_rate=dilation_rate,
-            activation=activation, use_bias=use_bias)
+            activation=activation, use_bias=use_bias, kernel_initializer=kernel_initializer,
+            bias_initializer=bias_initializer
+        )
 
         if block > in_channels:
             block = in_channels
@@ -301,7 +311,7 @@ class FastDeconv2D(Conv):
                 X = tf.reshape(X, [N, -1, C * self.kernel_size[0] * self.kernel_size[1]])  # [N, L^2, C * K^2]
 
             else:
-                # channel wise
+                # channel wise ([N, H, W, C] -> [N * H * W, C] -> [N * H / S * W / S, C]
                 X = tf.reshape(x, [-1, C])[::self.sampling_stride ** 2, :]
 
             if self.groups == 1:
@@ -333,6 +343,7 @@ class FastDeconv2D(Conv):
 
                 scale = tf.cast(tf.shape(X)[1], X.dtype)
                 Cov = self.eps * Id + (1. / scale) * tf.matmul(tf.transpose(X, [0, 2, 1]), X)
+
                 deconv = isqrt_newton_schulz_autograd_batch(Cov, self.n_iter)
 
             if self.track_running_stats:
