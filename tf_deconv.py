@@ -419,9 +419,9 @@ class ChannelDeconv1D(ChannelDeconv2D):
         super(ChannelDeconv1D, self).__init__(block=block, eps=eps, n_iter=n_iter,
                                               momentum=momentum, sampling_stride=sampling_stride)
 
-        self.input_spec = tf.keras.layers.InputSpec(ndim=3)
+        self.input_spec = tf.keras.layers.InputSpec(min_ndim=2, max_ndim=3)
 
-    @tf.function
+    @tf.function(experimental_compile=True)
     def call(self, x, training=None):
         # insert dummy dimension in time channel
         shape = x.shape
