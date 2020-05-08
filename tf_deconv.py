@@ -283,9 +283,9 @@ class FastDeconv2D(Conv):
 
         # change rank based on 3d or 4d tensor input
         ndim = len(input_shape)
-        assert ndim in [3, 4], "Can only take rank 3 and 4 tensors as input"
 
-        self.input_spec = tf.keras.layers.InputSpec(ndim=ndim,
+        self.input_spec = tf.keras.layers.InputSpec(min_ndim=3,
+                                                    max_ndim=4,
                                                     axes={channel_axis: input_channel})
 
         self._build_conv_op_input_shape = input_shape
@@ -421,7 +421,7 @@ class ChannelDeconv1D(ChannelDeconv2D):
 
         self.input_spec = tf.keras.layers.InputSpec(min_ndim=2, max_ndim=3)
 
-    @tf.function(experimental_compile=True)
+    @tf.function
     def call(self, x, training=None):
         # insert dummy dimension in time channel
         shape = x.shape
