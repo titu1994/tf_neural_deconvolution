@@ -447,7 +447,7 @@ class FastDeconv1D(FastDeconv2D):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding='valid', dilation_rate=1,
                  activation=None, use_bias=True, groups=1, eps=1e-5, n_iter=5, momentum=0.1, block=64,
                  sampling_stride=3, freeze=False, freeze_iter=100, kernel_initializer='he_uniform',
-                 bias_initializer=BiasHeUniform):
+                 bias_initializer=BiasHeUniform()):
         kernel_size = (kernel_size, 1)
         stride = (stride, 1)
         super(FastDeconv1D, self).__init__(in_channels=in_channels, out_channels=out_channels,
