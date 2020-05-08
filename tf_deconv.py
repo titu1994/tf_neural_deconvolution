@@ -295,7 +295,7 @@ class FastDeconv2D(Conv):
             self.data_format, self.rank + 2)
         self.built = True
 
-    @tf.function(experimental_compile=True)
+    @tf.function(experimental_compile=False)
     def call(self, x, training=None):
         x_shape = tf.shape(x)
         N, H, W, C = x_shape[0], x_shape[1], x_shape[2], x_shape[3]
@@ -460,7 +460,7 @@ class FastDeconv1D(FastDeconv2D):
 
         self.input_spec = tf.keras.layers.InputSpec(ndim=3)
 
-    @tf.function(experimental_compile=True)
+    @tf.function(experimental_compile=False)
     def call(self, x, training=None):
         # insert dummy dimension in time channel
         x_expanded = tf.expand_dims(x, axis=2)  # [N, T, 1, C]
