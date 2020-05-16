@@ -133,19 +133,19 @@ class ChannelDeconv2D(tf.keras.layers.Layer):
         # step 2. calculate deconv@x1 = cov^(-0.5)@x1
         if training:
             scale_ = tf.cast(tf.shape(x1_s)[1], x1_s.dtype)
-            cov = tf.cast((tf.matmul(x1_s, tf.transpose(x1_s)) / scale_), self.block_eye.dtype) + self.eps * self.block_eye
+            cov = (tf.matmul(x1_s, tf.transpose(x1_s)) / scale_) + tf.cast(self.eps * self.block_eye, x1_s.dtype)
             deconv = isqrt_newton_schulz_autograd(cov, self.n_iter)
         else:
-            deconv = self.running_deconv
+            deconv = tf.cast(self.running_deconv, x1_s.dtype)
 
         if self.num_batches_tracked == 0:
-            self.running_deconv.assign(deconv)
+            self.running_deconv.assign(tf.cast(deconv, self.running_deconv.dtype))
 
         if training:
             running_deconv = tf.cast(self.momentum * deconv, self.running_deconv.dtype) + (1. - self.momentum) * self.running_deconv
             self.running_deconv.assign(running_deconv)
         else:
-            deconv = self.running_deconv
+            deconv = tf.cast(self.running_deconv, x.dtype)
 
         deconv = tf.cast(deconv, x1.dtype)
         x1 = tf.matmul(deconv, x1)
@@ -340,7 +340,7 @@ class FastDeconv2D(Conv):
                 X = tf.reshape(X, [-1, X_shape_[-1]])  # [N, L^2, C * K^2] -> [N * L^2, C * K^2]
 
             # 2. subtract mean
-            X = tf.cast(X, tf.float32)
+            # X = tf.cast(X, tf.float32)
             X_mean = tf.reduce_mean(X, axis=0)
             X = X - tf.expand_dims(X_mean, axis=0)
 
@@ -364,16 +364,16 @@ class FastDeconv2D(Conv):
                 deconv = isqrt_newton_schulz_autograd_batch(Cov, self.n_iter)
 
             if self.track_running_stats:
-                running_mean = self.momentum * X_mean + (1. - self.momentum) * self.running_mean
-                running_deconv = self.momentum * deconv + (1. - self.momentum) * self.running_deconv
+                running_mean = tf.cast(self.momentum * X_mean, self.running_mean.dtype) + (1. - self.momentum) * self.running_mean
+                running_deconv = tf.cast(self.momentum * deconv, self.running_deconv.dtype) + (1. - self.momentum) * self.running_deconv
 
                 # track stats for evaluation
                 self.running_mean.assign(running_mean)
                 self.running_deconv.assign(running_deconv)
 
         else:
-            X_mean = self.running_mean
-            deconv = self.running_deconv
+            X_mean = tf.cast(self.running_mean, x.dtype)
+            deconv = tf.cast(self.running_deconv, x.dtype)
 
         # 4. X * deconv * conv = X * (deconv * conv)
         if self.groups == 1:
@@ -383,7 +383,7 @@ class FastDeconv2D(Conv):
             w = tf.matmul(w, tf.cast(deconv, w.dtype))
 
             if self.use_bias:
-                b_dash = tf.matmul(w, (tf.cast(tf.expand_dims(X_mean, axis=-1), w.dtype)))
+                b_dash = tf.matmul(w, tf.cast(tf.expand_dims(X_mean, axis=-1), dtype=w.dtype))
                 b_dash = tf.reshape(b_dash, [self.filters, -1])
                 b_dash = tf.reduce_sum(b_dash, axis=1)
                 b = self.bias - b_dash
@@ -398,7 +398,7 @@ class FastDeconv2D(Conv):
             w = tf.matmul(w, tf.cast(deconv, w.dtype))
 
             if self.use_bias:
-                b_dash = tf.matmul(w, tf.cast(tf.reshape(X_mean, [-1, self.num_features, 1]), w.dtype))
+                b_dash = tf.matmul(w, tf.cast(tf.reshape(X_mean, [-1, self.num_features, 1]), dtype=w.dtype))
                 b_dash = tf.reshape(b_dash, self.bias.shape)
                 b = self.bias - b_dash
             else:

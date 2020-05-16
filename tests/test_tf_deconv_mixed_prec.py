@@ -42,14 +42,20 @@ def tf_mixed_precision(func):
 @tf_mixed_precision
 def test_fastdeconv_1d_mixed_precision(groups, channel_deconv_loc, blocks):
     """ Test 1D variant """
-    x = tf.zeros([16, 24, 3])
+    policy = mixed_precision.global_policy()
+
+    x = tf.zeros([16, 24, 3], dtype=tf.float16)
     model2 = simplenet_tf_mixed.SimpleNet1D(num_classes=10, num_channels=64, groups=groups,
-                                            channel_deconv_loc=channel_deconv_loc, blocks=blocks)
+                                            channel_deconv_loc=channel_deconv_loc, blocks=blocks,
+                                            dtype=policy)
 
     # trace the model
     model_traced2 = tf.function(model2)
 
     out = model_traced2(x, training=True)
+    assert out.shape == [16, 10]
+
+    out = model_traced2(x, training=False)
     assert out.shape == [16, 10]
 
 
@@ -60,14 +66,20 @@ def test_fastdeconv_1d_mixed_precision(groups, channel_deconv_loc, blocks):
 @tf_mixed_precision
 def test_fastdeconv_2d_mixed_precision(groups, channe_deconv_loc, blocks):
     """ Test 1D variant """
-    x = tf.zeros([16, 32, 32, 3])
+    policy = mixed_precision.global_policy()
+
+    x = tf.zeros([16, 32, 32, 3], dtype=tf.float16)
     model2 = simplenet_tf_mixed.SimpleNet2D(num_classes=10, num_channels=64, groups=groups,
-                                            channel_deconv_loc=channe_deconv_loc, blocks=blocks)
+                                            channel_deconv_loc=channe_deconv_loc, blocks=blocks,
+                                            dtype=policy)
 
     # trace the model
     model_traced2 = tf.function(model2)
 
     out = model_traced2(x, training=True)
+    assert out.shape == [16, 10]
+
+    out = model_traced2(x, training=False)
     assert out.shape == [16, 10]
 
 

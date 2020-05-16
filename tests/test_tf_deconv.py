@@ -32,6 +32,9 @@ def test_fastdeconv_1d(groups, channel_deconv_loc, blocks):
     out = model_traced2(x, training=True)
     assert out.shape == [16, 10]
 
+    out = model_traced2(x, training=False)
+    assert out.shape == [16, 10]
+
 
 @pytest.mark.parametrize("groups", [1, 32, 64])
 @pytest.mark.parametrize("channe_deconv_loc", ['pre', 'post'])
@@ -47,6 +50,9 @@ def test_fastdeconv_2d(groups, channe_deconv_loc, blocks):
     model_traced2 = tf.function(model2)
 
     out = model_traced2(x, training=True)
+    assert out.shape == [16, 10]
+
+    out = model_traced2(x, training=False)
     assert out.shape == [16, 10]
 
 
