@@ -364,8 +364,8 @@ class FastDeconv2D(Conv):
                 deconv = isqrt_newton_schulz_autograd_batch(Cov, self.n_iter)
 
             if self.track_running_stats:
-                running_mean = tf.cast(self.momentum * X_mean, self.running_mean.dtype) + (1. - self.momentum) * self.running_mean
-                running_deconv = tf.cast(self.momentum * deconv, self.running_deconv.dtype) + (1. - self.momentum) * self.running_deconv
+                running_mean = self.momentum * X_mean + (1. - self.momentum) * self.running_mean
+                running_deconv = self.momentum * deconv + (1. - self.momentum) * self.running_deconv
 
                 # track stats for evaluation
                 self.running_mean.assign(running_mean)
