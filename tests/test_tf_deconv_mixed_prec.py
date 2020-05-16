@@ -3,7 +3,7 @@ import six
 import tensorflow as tf
 from tensorflow.keras.mixed_precision import experimental as mixed_precision
 
-from models import simplenet_tf
+from models import simplenet_tf_mixed
 
 
 def tf_context(func):
@@ -16,15 +16,35 @@ def tf_context(func):
     return wrapped
 
 
+def tf_mixed_precision(func):
+    @six.wraps(func)
+    def wrapped(*args, **kwargs):
+        # Run in mixed precision mode, then return to float32 mode
+        policy = mixed_precision.Policy('mixed_float16')
+        mixed_precision.set_policy(policy)
+
+        # call method in mixed precision mode
+        try:
+            out = func(*args, **kwargs)
+        finally:
+            # Return to float32 precision mode
+            policy = mixed_precision.Policy('float32')
+            mixed_precision.set_policy(policy)
+
+        return out
+    return wrapped
+
+
 @pytest.mark.parametrize("groups", [1, 32, 64])
 @pytest.mark.parametrize("channel_deconv_loc", ['pre', 'post'])
 @pytest.mark.parametrize("blocks", [1, 32, 64])
 @tf_context
-def test_fastdeconv_1d(groups, channel_deconv_loc, blocks):
+@tf_mixed_precision
+def test_fastdeconv_1d_mixed_precision(groups, channel_deconv_loc, blocks):
     """ Test 1D variant """
     x = tf.zeros([16, 24, 3])
-    model2 = simplenet_tf.SimpleNet1D(num_classes=10, num_channels=64, groups=groups,
-                                      channel_deconv_loc=channel_deconv_loc, blocks=blocks)
+    model2 = simplenet_tf_mixed.SimpleNet1D(num_classes=10, num_channels=64, groups=groups,
+                                            channel_deconv_loc=channel_deconv_loc, blocks=blocks)
 
     # trace the model
     model_traced2 = tf.function(model2)
@@ -37,11 +57,12 @@ def test_fastdeconv_1d(groups, channel_deconv_loc, blocks):
 @pytest.mark.parametrize("channe_deconv_loc", ['pre', 'post'])
 @pytest.mark.parametrize("blocks", [1, 32, 64])
 @tf_context
-def test_fastdeconv_2d(groups, channe_deconv_loc, blocks):
+@tf_mixed_precision
+def test_fastdeconv_2d_mixed_precision(groups, channe_deconv_loc, blocks):
     """ Test 1D variant """
     x = tf.zeros([16, 32, 32, 3])
-    model2 = simplenet_tf.SimpleNet2D(num_classes=10, num_channels=64, groups=groups,
-                                      channel_deconv_loc=channe_deconv_loc, blocks=blocks)
+    model2 = simplenet_tf_mixed.SimpleNet2D(num_classes=10, num_channels=64, groups=groups,
+                                            channel_deconv_loc=channe_deconv_loc, blocks=blocks)
 
     # trace the model
     model_traced2 = tf.function(model2)

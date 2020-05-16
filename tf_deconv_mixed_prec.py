@@ -395,10 +395,10 @@ class FastDeconv2D(Conv):
 
         else:
             w = tf.reshape(self.kernel, [C // block, -1, self.num_features])
-            w = tf.matmul(w, deconv)
+            w = tf.matmul(w, tf.cast(deconv, w.dtype))
 
             if self.use_bias:
-                b_dash = tf.matmul(w, tf.reshape(X_mean, [-1, self.num_features, 1]))
+                b_dash = tf.matmul(w, tf.cast(tf.reshape(X_mean, [-1, self.num_features, 1]), w.dtype))
                 b_dash = tf.reshape(b_dash, self.bias.shape)
                 b = self.bias - b_dash
             else:
