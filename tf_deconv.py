@@ -57,8 +57,8 @@ def isqrt_newton_schulz_autograd_batch(A: tf.Tensor, numIters: int):
 
 
 class ChannelDeconv2D(tf.keras.layers.Layer):
-    def __init__(self, block, eps=1e-5, n_iter=5, momentum=0.1, sampling_stride=3):
-        super(ChannelDeconv2D, self).__init__()
+    def __init__(self, block, eps=1e-5, n_iter=5, momentum=0.1, sampling_stride=3, **kwargs):
+        super(ChannelDeconv2D, self).__init__(**kwargs)
 
         self.eps = eps
         self.n_iter = n_iter
@@ -196,7 +196,7 @@ class FastDeconv2D(Conv):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding='valid', dilation_rate=1,
                  activation=None, use_bias=True, groups=1, eps=1e-5, n_iter=5, momentum=0.1, block=64,
                  sampling_stride=3, freeze=False, freeze_iter=100, kernel_initializer='he_uniform',
-                 bias_initializer=BiasHeUniform()):
+                 bias_initializer=BiasHeUniform(), **kwargs):
         self.in_channels = in_channels
         self.groups = groups
         self.momentum = momentum
@@ -218,7 +218,7 @@ class FastDeconv2D(Conv):
         super(FastDeconv2D, self).__init__(
             2, out_channels, kernel_size, stride, padding, dilation_rate=dilation_rate,
             activation=activation, use_bias=use_bias, kernel_initializer=kernel_initializer,
-            bias_initializer=bias_initializer
+            bias_initializer=bias_initializer, **kwargs
         )
 
         if block > in_channels:
@@ -415,9 +415,9 @@ class FastDeconv2D(Conv):
 
 class ChannelDeconv1D(ChannelDeconv2D):
 
-    def __init__(self, block, eps=1e-5, n_iter=5, momentum=0.1, sampling_stride=3):
+    def __init__(self, block, eps=1e-5, n_iter=5, momentum=0.1, sampling_stride=3, **kwargs):
         super(ChannelDeconv1D, self).__init__(block=block, eps=eps, n_iter=n_iter,
-                                              momentum=momentum, sampling_stride=sampling_stride)
+                                              momentum=momentum, sampling_stride=sampling_stride, **kwargs)
 
         self.input_spec = tf.keras.layers.InputSpec(min_ndim=2, max_ndim=3)
 
@@ -447,7 +447,7 @@ class FastDeconv1D(FastDeconv2D):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding='valid', dilation_rate=1,
                  activation=None, use_bias=True, groups=1, eps=1e-5, n_iter=5, momentum=0.1, block=64,
                  sampling_stride=3, freeze=False, freeze_iter=100, kernel_initializer='he_uniform',
-                 bias_initializer=BiasHeUniform()):
+                 bias_initializer=BiasHeUniform(), **kwargs):
         kernel_size = (kernel_size, 1)
         stride = (stride, 1)
         super(FastDeconv1D, self).__init__(in_channels=in_channels, out_channels=out_channels,
@@ -456,7 +456,8 @@ class FastDeconv1D(FastDeconv2D):
                                            use_bias=use_bias, groups=groups, eps=eps,
                                            n_iter=n_iter, momentum=momentum, block=block,
                                            sampling_stride=sampling_stride, freeze=freeze, freeze_iter=freeze_iter,
-                                           kernel_initializer=kernel_initializer, bias_initializer=bias_initializer)
+                                           kernel_initializer=kernel_initializer, bias_initializer=bias_initializer,
+                                           **kwargs)
 
         self.input_spec = tf.keras.layers.InputSpec(ndim=3)
 
