@@ -1,10 +1,12 @@
-# Tensorflow Implementation of Neural Deconvolutions
+# Neural Deconvolutions (Tensorflow)
 
 Tensorflow implementation of the `FastDeconv2D` and `ChannelDeconv` layers from the paper [Network Deconvolution](https://openreview.net/forum?id=rkeu30EtvS) by Ye et al. Code ported from the repository - https://github.com/yechengxi/deconvolution/.
 
+Tensorflow implementation also support mixed precision training, allowing larger training sizes with no reduction in accuracy (found in `tf_deconv_mixed_prec.py`).
+
 # Usage
 
-Simply download the `tf_deconv.py` script and import `ChannelDeconv2D` and `FastDeconv2D` layers.
+Simply download the `tf_deconv.py` script and import `ChannelDeconv2D` and `FastDeconv2D` layers. Mixed precision support can be found in equivalent classes inside `tf_deconv_mixed_prec.py`.
 
 A baseline model has been provided in `models/vgg.py` to try out the architecture. `FastDeconv2D` can replace most Conv2D layer operations.
 
