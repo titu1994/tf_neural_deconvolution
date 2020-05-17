@@ -14,19 +14,24 @@ class BiasHeUniform(tf.keras.initializers.VarianceScaling):
 # iteratively solve for inverse sqrt of a matrix
 def isqrt_newton_schulz_autograd(A: tf.Tensor, numIters: int):
     dim = tf.shape(A)[0]
+    A_dtype = A.dtype
+    A = tf.cast(A, tf.float32)
+
     normA = tf.norm(A, ord='fro', axis=[0, 1])
     Y = A / normA
+    Y = tf.cast(Y, A_dtype)
 
     with tf.device(A.device):
-        I = tf.eye(dim, dtype=A.dtype)
-        Z = tf.eye(dim, dtype=A.dtype)
+        I = tf.eye(dim, dtype=A_dtype)
+        Z = tf.eye(dim, dtype=A_dtype)
 
     for i in range(numIters):
         T = 0.5 * (3.0 * I - tf.matmul(Z, Y))
         Y = tf.matmul(Y, T)
         Z = tf.matmul(T, Z)
 
-    A_isqrt = Z / tf.sqrt(normA)
+    A_isqrt = tf.cast(Z, tf.float32) / tf.sqrt(normA)
+    A_isqrt = tf.cast(A_isqrt, A_dtype)
     return A_isqrt
 
 
