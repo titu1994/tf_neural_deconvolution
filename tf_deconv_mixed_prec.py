@@ -19,18 +19,17 @@ def isqrt_newton_schulz_autograd(A: tf.Tensor, numIters: int):
 
     normA = tf.norm(A, ord='fro', axis=[0, 1])
     Y = A / normA
-    Y = tf.cast(Y, A_dtype)
 
     with tf.device(A.device):
-        I = tf.eye(dim, dtype=A_dtype)
-        Z = tf.eye(dim, dtype=A_dtype)
+        I = tf.eye(dim, dtype=A.dtype)
+        Z = tf.eye(dim, dtype=A.dtype)
 
     for i in range(numIters):
         T = 0.5 * (3.0 * I - tf.matmul(Z, Y))
         Y = tf.matmul(Y, T)
         Z = tf.matmul(T, Z)
 
-    A_isqrt = tf.cast(Z, tf.float32) / tf.sqrt(normA)
+    A_isqrt = Z / tf.sqrt(normA)
     A_isqrt = tf.cast(A_isqrt, A_dtype)
     return A_isqrt
 
@@ -38,6 +37,9 @@ def isqrt_newton_schulz_autograd(A: tf.Tensor, numIters: int):
 def isqrt_newton_schulz_autograd_batch(A: tf.Tensor, numIters: int):
     Ashape = tf.shape(A)  # [batch, _, C]
     batchSize, dim = Ashape[0], Ashape[-1]
+
+    A_dtype = A.dtype
+    A = tf.cast(A, tf.float32)
 
     normA = tf.reshape(A, (batchSize, -1))
     normA = tf.norm(normA, ord=2, axis=1)
@@ -58,6 +60,7 @@ def isqrt_newton_schulz_autograd_batch(A: tf.Tensor, numIters: int):
         Z = tf.matmul(T, Z)
 
     A_isqrt = Z / tf.sqrt(normA)
+    A_isqrt = tf.cast(A_isqrt, A_dtype)
 
     return A_isqrt
 
@@ -256,7 +259,7 @@ class FastDeconv2D(Conv):
             deconv_buff = tf.eye(self.num_features)
             deconv_buff = tf.expand_dims(deconv_buff, axis=0)
             deconv_buff = tf.tile(deconv_buff, [in_channels // block, 1, 1])
-            self.running_deconv = tf.Variable(deconv_buff, trainable=False, dtype=self.dtype)
+            self.running_deconv = tf.Variable(deconv_buff, trainable=False, dtype='float32')
 
         stride_int = stride[0] if type(stride) in (list, tuple) else stride
         self.sampling_stride = sampling_stride * stride_int
@@ -357,6 +360,7 @@ class FastDeconv2D(Conv):
                 Cov = self.eps * Id + (1. / scale) * tf.matmul(tf.transpose(X), X)
                 deconv = isqrt_newton_schulz_autograd(Cov, self.n_iter)
             else:
+                X = tf.cast(X, tf.float32)
                 X = tf.reshape(X, [-1, self.groups, self.num_features])
                 X = tf.transpose(X, [1, 0, 2])  # [groups, -1, num_features]
 
@@ -367,6 +371,7 @@ class FastDeconv2D(Conv):
                 Cov = self.eps * Id + (1. / scale) * tf.matmul(tf.transpose(X, [0, 2, 1]), X)
 
                 deconv = isqrt_newton_schulz_autograd_batch(Cov, self.n_iter)
+                deconv = tf.cast(deconv, x.dtype)
 
             if self.track_running_stats:
                 running_mean = tf.cast(self.momentum * X_mean, self.running_mean.dtype) + (1. - self.momentum) * self.running_mean
